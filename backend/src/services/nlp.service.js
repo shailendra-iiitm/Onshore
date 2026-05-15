@@ -2,7 +2,7 @@ const { OpenAI } = require('openai');
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
-// Keyword → topic mapping for heuristic fallback
+// Keyword -> topic mapping for heuristic fallback
 const keywordTopics = [
   { key: 'food',     topic: 'food quality' },
   { key: 'service',  topic: 'service' },
@@ -15,7 +15,7 @@ const keywordTopics = [
   { key: 'room',     topic: 'room quality' }
 ];
 
-// Pure function — no DB / external calls
+// Pure function -- no DB / external calls
 function heuristicAnalysis(text, rating) {
   const lc = text.toLowerCase();
   let sentiment = 'neutral';
@@ -129,9 +129,9 @@ function summarizeInsights(reviews) {
   };
 }
 
-// Topic → actionable advice map
+// Topic -> actionable advice map
 const TOPIC_ADVICE = {
-  'waiting time': { title: 'Reduce Wait Times',             description: 'Multiple customers report long waiting times. This is a high-impact issue that affects repeat visits.',              actionItems: ['Increase kitchen staff during peak hours (7–10 PM)', 'Implement a table management or queue system', 'Set clear wait-time expectations at entry', 'Streamline prep for highest-ordered dishes'] },
+  'waiting time': { title: 'Reduce Wait Times',             description: 'Multiple customers report long waiting times. This is a high-impact issue that affects repeat visits.',              actionItems: ['Increase kitchen staff during peak hours (7-10 PM)', 'Implement a table management or queue system', 'Set clear wait-time expectations at entry', 'Streamline prep for highest-ordered dishes'] },
   'service':      { title: 'Improve Service Quality',       description: 'Service quality issues appear repeatedly. Consistent service is key to customer loyalty.',                           actionItems: ['Schedule regular staff training sessions', 'Introduce service quality checklists per shift', 'Empower staff to resolve complaints on the spot', 'Collect internal service feedback weekly'] },
   'hygiene':      { title: 'Address Hygiene Concerns',      description: 'Hygiene complaints are critical and can damage reputation quickly if unaddressed.',                                  actionItems: ['Conduct a thorough cleanliness audit this week', 'Set up visible hygiene checklists at each station', 'Assign dedicated cleaning staff during service hours', 'Consider a third-party hygiene inspection'] },
   'cleanliness':  { title: 'Improve Cleanliness Standards', description: 'Cleanliness issues mentioned in reviews reflect on the overall customer experience.',                                actionItems: ['Schedule deep cleaning before every opening', 'Add post-meal cleaning checklists for each table', 'Inspect washrooms every 30 minutes during service', 'Train staff on presentation and tidiness standards'] },

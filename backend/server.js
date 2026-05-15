@@ -1,18 +1,7 @@
-const express = require("express");
-const cors = require("cors");
-require("dotenv").config();
+import dotenv from "dotenv";
+import app from "./app.js";
 
-const app = express();
-
-app.use(cors());
-app.use(express.json());
-
-app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    message: "Onshore Backend Running",
-  });
-});
+dotenv.config();
 
 const PORT = process.env.PORT || 5000;
 

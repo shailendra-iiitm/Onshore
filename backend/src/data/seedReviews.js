@@ -1,4 +1,4 @@
-cforconst daysAgo = (n) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+const daysAgo = (n) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 
 const restaurantSeed = [
   { source: 'google', author: 'Rhea Kapoor', content: 'Loved the food quality and ambience. Service was fast and warm. Will definitely come back!', rating: 5, reviewedAt: daysAgo(1) },

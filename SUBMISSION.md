@@ -1,105 +1,149 @@
 # Assignment Submission — OnShore Reputation Manager
 
-**Candidate:** Shailendra Shukla
-**Role Applied:** Full Stack Developer
-**Date:** May 2026
+**Candidate:** Shailendra Shukla  
+**Role Applied:** Full Stack Developer Intern  
+**Date:** May 2026  
 **Repository:** https://github.com/shailendra-iiitm/Onshore
 
 ---
 
-## Assignment Brief (Interpreted)
+## Assignment Brief
 
 Build a web application that helps hospitality businesses (restaurants / hotels) monitor their online reputation by aggregating reviews, performing sentiment analysis, and generating actionable AI-powered insights and response suggestions.
 
 ---
 
-## What I Built
+## Tech Stack
 
-A full-stack application with the following capabilities:
-
-### Search & Discovery
-- User enters a business name, city, and type
-- Backend performs an upsert (`findOneAndUpdate` with `$setOnInsert`) — finds existing or creates new
-- On first search, the system auto-seeds 12–15 realistic mock reviews from multiple platforms
-
-### NLP Analysis Engine
-Every review is processed through `nlp.service.js`:
-- **Sentiment** — positive / neutral / negative (based on rating + content)
-- **Topic extraction** — keyword matching for food quality, service, hygiene, pricing, ambience, wifi, room quality, waiting time, cleanliness
-- **Emotion** — happy / frustrated / neutral
-- **Priority** — high / medium / low (negative reviews get high priority)
-- **OpenAI mode** — if `OPENAI_API_KEY` is set, uses `gpt-4o-mini` with JSON response format for richer analysis
-- **Offline/heuristic mode** — works without any API key
-
-### Dashboard — 3 Tabs
-
-**Overview Tab**
-- 4 metric cards: average rating, total reviews, positive count, negative count
-- Visual sentiment distribution bar (proportional segments)
-- Top complaints and top compliments (aggregated by topic frequency)
-- Reviews by source (bar chart with platform colors, avg rating per source)
-
-**Reviews Tab**
-- All reviews rendered as cards with sentiment colour border
-- Filter pills: All / Positive / Neutral / Negative (live API call on each filter change)
-- Per-review: star rating, sentiment pill, priority badge, topic tags, date, source dot
-- **Suggest Reply** — calls `POST /api/reputation/:id/reviews/:reviewId/suggest-response`
-- One-click copy for the suggested response
-
-**Recommendations Tab**
-- AI-generated (or pattern-based) recommendations ranked by impact (high / medium / low)
-- Each card has: title, description, and a list of concrete action items
-- 9 topic categories covered with specific, actionable advice
+| Layer | Choice | Reason |
+|-------|--------|--------|
+| Frontend | React 19 + Vite 8 (plain JSX) | Fast HMR, minimal config, no TS overhead for MVP |
+| Backend | Node.js + Express 4 (CommonJS) | Simple, well-understood, matches stack requirement |
+| Database | MongoDB + Mongoose 8 | Flexible schema for evolving review shapes |
+| NLP / AI | OpenAI `gpt-4o-mini` + heuristic fallback | Cost-efficient model; heuristic ensures zero-cost baseline |
+| Styling | CSS custom properties (no framework) | Zero build deps; full design control with two media query breakpoints |
+| Review sources | Reddit, SerpAPI, Apify | All free without a credit card |
+| Deployment | Frontend → Vercel, Backend → Render | Both have generous free tiers |
 
 ---
 
-## Technical Decisions & Architecture
+## Architecture
 
-### Backend — Express + MongoDB (CommonJS)
 ```
-server.js           ← DB connect-then-listen (fail-fast on no DB)
-app.js              ← CORS, JSON, routes, 404, global error handler
-src/config/db.js    ← connectMongo() with env-driven URI
-src/models/         ← Mongoose schemas with enums, indexes, refs
-src/data/           ← Seed data (15 restaurant + 12 hotel reviews)
-src/services/       ← Business logic separated from route handlers
-src/routes/         ← Thin route files, call services directly
+Browser (React/Vite)
+   │  HTTP + axios
+Express API (Node / server.js → app.js → routes/)
+   ├─ /api/business  →  find-or-create business (MongoDB upsert)
+   ├─ /api/reputation
+   │     ├─ GET  /:id/dashboard       ← metrics, sentiment, recs
+   │     ├─ GET  /:id/reviews         ← filterable review list
+   │     ├─ POST /:id/reviews/:rid/suggest-response
+   │     ├─ POST /:id/refresh         ← background re-scrape
+   │     └─ GET  /sources             ← connector status
+   └─ /api/health
+   │
+   ├─ services/bootstrap.service.js  →  on first search, calls aggregator
+   ├─ services/nlp.service.js        →  OpenAI or heuristic analysis
+   └─ connectors/
+         ├─ reddit.connector.js      →  public unauthenticated JSON API
+         ├─ serpapi.connector.js     →  Google Maps + Yelp via SerpAPI
+         ├─ apify.connector.js       →  Google Maps + TripAdvisor via Apify
+         └─ index.js                 →  parallel aggregation + dedup
+   │
+MongoDB  →  Business + Review collections
 ```
 
-### Frontend — React + Vite (plain JSX, no TypeScript)
-```
-src/api.js          ← Single axios instance, 4 named exports
-src/styles.css      ← CSS custom properties design system (no Tailwind, no styled-components)
-src/components/     ← SearchPage → App ← {OverviewTab, ReviewsTab, RecommendationsTab}
-src/components/UIKit.jsx  ← Atomic reusable components
-```
+---
 
-**Why plain CSS?** Zero build-time dependencies. The design system uses CSS custom properties (`--brand`, `--positive`, `--negative` etc.) making it easy to retheme. All responsive breakpoints handled with two media queries.
+## What I built
 
-### NLP / AI Strategy
-- Two-tier: OpenAI first, heuristic fallback
-- Heuristic runs synchronously, zero latency, zero cost
-- OpenAI mode uses `response_format: { type: 'json_object' }` for reliable structured output
-- Both paths return identical shape: `{ sentiment, topics, emotion, priority }`
+### 1 — Business Search & Persistence
+- User enters business name, city, and type (restaurant / hotel)
+- `POST /api/business/search` does a MongoDB `findOneAndUpdate` with `$setOnInsert` — idempotent, always fast on repeat searches
+- Unique compound index on `{ name, city }` prevents duplicates
+
+### 2 — Multi-source Review Aggregation
+Three real connectors, run in **parallel**, results **deduplicated** by content fingerprint:
+
+| Connector | Source | Key needed |
+|-----------|--------|-----------|
+| `reddit.connector.js` | Reddit public JSON search API | ❌ None — always on |
+| `serpapi.connector.js` | Google Maps reviews + Yelp | `SERPAPI_KEY` (100/month free, no card) |
+| `apify.connector.js` | Google Maps + TripAdvisor | `APIFY_TOKEN` ($5/month free, no card) |
+| Seed fallback | Static mock data | — automatic when live returns nothing |
+
+### 3 — NLP Analysis Engine (`nlp.service.js`)
+Two-tier approach — both paths return identical shapes:
+
+**OpenAI mode** (when `OPENAI_API_KEY` is set):
+- Model: `gpt-4o-mini`, `temperature: 0.2`, `response_format: json_object`
+- Returns: `{ sentiment, topics[], emotion, priority }`
+
+**Heuristic mode** (always available, zero cost):
+- Sentiment from star rating (≥4 → positive, ≤2 → negative)
+- Topics via keyword lookup (9 categories)
+- Emotion derived from sentiment
+- Priority: negative → high, neutral → medium, positive → low
+
+### 4 — Reputation Dashboard (3 tabs)
+
+**📊 Overview**
+- 4 metric cards: avg rating, total reviews, positive count, negative count
+- Proportional sentiment distribution bar (animated segments)
+- Top complaints + top compliments (by topic frequency, colour-coded)
+- Reviews by source bar chart (platform colours, avg rating per source)
+
+**💬 Reviews**
+- All reviews as cards with left sentiment-colour border
+- Filter pills: All / Positive / Neutral / Negative (live API refetch)
+- Per review: stars, sentiment pill, priority badge, topic tags, source dot, date
+- **Suggest Reply** → calls OpenAI (or fallback template) → one-click copy
+
+**💡 Recommendations**
+- Built by `buildRecommendations()` — maps top complaint topics to 9 pre-researched advice templates
+- Each card: title, description, impact badge (high/medium/low), concrete action items
+- Covers: waiting time, service, hygiene, cleanliness, pricing, food quality, ambience, wifi, room quality
+
+### 5 — Refresh Sources
+- Navbar **🔄 Refresh Sources** button calls `POST /api/reputation/:id/refresh`
+- Clears existing reviews, re-runs the full aggregation pipeline in the background
+- Frontend polls after 10 s and reloads dashboard data
+
+---
+
+## Completed vs Mocked
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Business search + MongoDB persistence | ✅ **Real** | Upsert with unique compound index |
+| Reddit review scraping | ✅ **Real** | Live public API, always on |
+| SerpAPI scraping (Google Maps + Yelp) | ✅ **Real** | Requires free `SERPAPI_KEY` |
+| Apify scraping (Google Maps + TripAdvisor) | ✅ **Real** | Requires free `APIFY_TOKEN` |
+| NLP: sentiment / topics / emotion / priority | ✅ **Real** | OpenAI or heuristic |
+| Suggested reply generation | ✅ **Real** | OpenAI or template |
+| Recommendations engine | ✅ **Real** | Pattern-based, 9 topic categories |
+| Source breakdown & deduplication | ✅ **Real** | Content fingerprint, parallel fetch |
+| Refresh live sources on demand | ✅ **Real** | Background reseed |
+| Seed / fallback review data | 🌱 **Mock** | 15 restaurant + 12 hotel static reviews (guaranteed fallback) |
+| User authentication | ❌ **Not built** | Out of MVP scope |
+| Real-time push updates | ❌ **Not built** | Polling on manual refresh instead |
+| Pagination | ❌ **Not built** | All reviews returned in one call |
+| Rate limiting | ❌ **Not built** | Would add `express-rate-limit` |
 
 ---
 
 
-## What Works Without Setup
-
-- The heuristic NLP runs with zero external dependencies
-- No OpenAI key needed for full functionality
-- Works with either local MongoDB or Atlas
-
----
 
 ## Known Gaps / If I Had More Time
 
-- **Tests** — unit tests for `nlp.service.js` (heuristic analysis), integration tests for API endpoints
-- **Pagination** — reviews endpoint returns all at once; would add cursor-based pagination
-- **Auth** — no authentication; would add JWT-based business owner accounts
-- **Real review ingestion** — replace seed data with a scraper/webhook for real platform reviews
-- **WebSocket** — live dashboard updates as reviews come in
+1. **Tests** — unit tests for `nlp.service.js` heuristic, integration tests for route handlers
+2. **Pagination** — cursor-based pagination for large datasets
+3. **Auth** — JWT + business-owner accounts so each login only sees their own businesses
+4. **WebSocket** — push new review alerts in real time instead of polling
+5. **Response tracking** — mark a review as "replied", store the reply, track response rate KPI
+6. **Competitor benchmarking** — compare your sentiment score vs nearby similar businesses
+7. **Email digests** — weekly summary of new reviews + sentiment changes
+8. **Rate limiting** — `express-rate-limit` on all write endpoints
 
 ---
 
@@ -107,15 +151,37 @@ src/components/UIKit.jsx  ← Atomic reusable components
 
 See **[SETUP.md](./SETUP.md)** for full step-by-step instructions.
 
-Quick start:
 ```bash
 # Backend
-cd backend && cp .env.example .env  # fill MONGODB_URI
+cd backend
+cp .env.example .env   # fill MONGODB_URI; optionally add SERPAPI_KEY / APIFY_TOKEN
 npm install && npm run dev
+# → http://localhost:5000
 
 # Frontend (new terminal)
-cd frontend && cp .env.example .env
+cd frontend
+cp .env.example .env
 npm install && npm run dev
 # → http://localhost:5173
 ```
 
+---
+
+## Environment Variable Reference
+
+`backend/.env.example`:
+```env
+PORT=5000
+MONGODB_URI=mongodb://127.0.0.1:27017/onshore_reputation
+MONGODB_DB=onshore_reputation
+CORS_ORIGIN=http://localhost:5173
+OPENAI_API_KEY=          # optional
+OPENAI_MODEL=gpt-4o-mini
+SERPAPI_KEY=             # optional — 100 free/month at serpapi.com (no card)
+APIFY_TOKEN=             # optional — $5/month free at apify.com (no card)
+```
+
+`frontend/.env.example`:
+```env
+VITE_API_URL=http://localhost:5000/api
+```

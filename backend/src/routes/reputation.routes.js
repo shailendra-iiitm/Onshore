@@ -6,8 +6,39 @@ const {
   buildRecommendations,
   suggestReply
 } = require('../services/nlp.service');
+const { reseedBusiness }       = require('../services/bootstrap.service');
+const { getConfiguredSources } = require('../connectors');
 
 const router = express.Router();
+
+/**
+ * GET /api/reputation/sources
+ * Returns which live connectors are currently configured.
+ * Must be registered BEFORE /:businessId patterns.
+ */
+router.get('/sources', (req, res) => {
+  const configured = getConfiguredSources();
+  res.json({
+    configured,
+    details: {
+      reddit:  {
+        status: 'always-on',
+        note:   'No key required — public Reddit JSON API',
+        signup: null
+      },
+      apify:   {
+        status: process.env.APIFY_TOKEN ? 'active' : 'not configured',
+        note:   'Google Maps + TripAdvisor reviews — $5/month free, no credit card',
+        signup: 'https://apify.com'
+      },
+      serpapi: {
+        status: process.env.SERPAPI_KEY ? 'active' : 'not configured',
+        note:   'Google Maps + Yelp reviews — 100 free searches/month, no credit card',
+        signup: 'https://serpapi.com'
+      }
+    }
+  });
+});
 
 /**
  * GET /api/reputation/:businessId/reviews
@@ -106,5 +137,29 @@ router.post('/:businessId/reviews/:reviewId/suggest-response', async (req, res, 
   }
 });
 
-module.exports = router;
+/**
+ * POST /api/reputation/:businessId/refresh
+ * Clears existing reviews and re-scrapes all configured live sources.
+ * Responds immediately; scraping runs in background.
+ */
+router.post('/:businessId/refresh', async (req, res, next) => {
+  try {
+    const { businessId } = req.params;
+    const business = await Business.findById(businessId).lean();
+    if (!business) return res.status(404).json({ error: 'Business not found' });
 
+    reseedBusiness(business).catch((err) =>
+      console.error('[Refresh] Background error:', err.message)
+    );
+
+    res.json({
+      message: 'Refresh started. New reviews will appear in ~10 seconds.',
+      businessId,
+      sources: getConfiguredSources()
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+module.exports = router;

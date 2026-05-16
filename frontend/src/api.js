@@ -28,3 +28,14 @@ export async function getSuggestedResponse(businessId, reviewId) {
   return data;
 }
 
+/** Trigger a live re-scrape of all configured sources for this business */
+export async function refreshBusiness(businessId) {
+  const { data } = await api.post(`/reputation/${businessId}/refresh`);
+  return data;
+}
+
+/** See which connectors are currently active on the backend */
+export async function getSourceStatus() {
+  const { data } = await api.get('/reputation/sources');
+  return data;
+}

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: onshore-backend
+    env: node
+    region: singapore
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false          # Set this in Render dashboard
+      - key: MONGODB_DB
+        value: onshore_reputation
+      - key: CORS_ORIGIN
+        sync: false          # Set to your Vercel URL, e.g. https://onshore.vercel.app
+      - key: OPENAI_API_KEY
+        sync: false          # Optional — leave blank for heuristic mode
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+
